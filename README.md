@@ -11,7 +11,7 @@ Since there are several universal compressors with similar features and performa
 
 Unlike LZ77, which defines a dictionary of phrases through a fixed-length window of text previously seen, LZ78 allows the dictionary to be a potentially limitless set of previously observed phrases. LZ78 identifies and adds phrases to a dictionary. When a phrase reoccurs, LZ78 outputs a dictionary index token instead of repeating the phrase, along with one character that follows that phrase. The new phrase (the reoccurred phrase plus the character that follows) will be added to the dictionary as a new phrase. The dictionary will be represented as a n-ary tree where n is the number of tokens used to form token sequences, and each leave will be a phrase.
 
-$Example$: encode **"EE274 is cool cool"**
+$Example$: encode **"EE274 cool cool"**
 
 |index  |output |string |
 |-------|-------|-------|
