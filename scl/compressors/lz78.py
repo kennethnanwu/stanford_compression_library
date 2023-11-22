@@ -1,6 +1,7 @@
 import argparse
 from scl.core.data_encoder_decoder import DataDecoder, DataEncoder
 from scl.core.data_block import DataBlock
+from scl.utils.bitarray_utils import BitArray
 
 class LZ78Encoder(DataEncoder):
     def __init__(
@@ -69,33 +70,43 @@ class LZ78Decoder(DataDecoder):
 
         # if initial_dict is provided, update dictionary
         if initial_dict is not None:
-            self.dictionary = initial_dict
+            for key, value in initial_dict:
+                self.dictionary[value] = key
+    
+    def lz78_decode_from_tuples(self, encoded_tuples):
+        """Decode tuples to original messages.
+        
+        Args:
+            encoded_tuples: ordered list of tuples (index, symbol).
+        """
+        dictionary = self.dictionary
+        output = []
+        dict_index = 1
+        
+        for index, symbol in encoded_tuples:
+            new_string = symbol
+            if index != 0:
+                new_string = dictionary[index] + symbol
+
+            dictionary[dict_index] = new_string
+            dict_index += 1
+            output.append(new_string)
+                
+        return ''.join(output)       
+            
+    
+    def decode_block(self, bitarray: BitArray):
+        return super().decode_block(bitarray)
 
 
-def test_lz77_sequence_generation():
+def test_lz78_encode_to_dict():
     """
-    Test that lz77 produces expected sequences
-    Also test behavior across blocks both when we reset and when we don't
+    Test that lz78 produces expected dictionary and expected list of tuples.
     """
     encoder = LZ78Encoder()
 
-    data_list = [
-        "E",
-        "E",
-        "2",
-        "7",
-        "4",
-        " ",
-        "c",
-        "o",
-        "o",
-        "l",
-        " ",
-        "c",
-        "o",
-        "o",
-        "l",
-    ]
+    input_string = "EE274 cool cool"
+    data_list = [*input_string]
     data_block = DataBlock(data_list)
 
     expected_output = [(0,"E"), (1,"2"), (0,"7"), (0,"4"), (0," "), (0,"c"), (0,"o"), (7,"l"), (5,"c"), (7,"o"), (0,"l")]
@@ -116,6 +127,33 @@ def test_lz77_sequence_generation():
 
     assert output == expected_output
     assert dict == expected_dict
+
+def test_lz77_decode_from_dict():
+    """
+    Test that lz78 decodes from a list of tuples.
+    """
+
+    input_tuples = [(0,"E"), (1,"2"), (0,"7"), (0,"4"), (0," "), (0,"c"), (0,"o"), (7,"l"), (5,"c"), (7,"o"), (0,"l")]
+    decoder = LZ78Decoder()
+    output = decoder.lz78_decode_from_tuples(input_tuples)
+
+    assert output == "EE274 cool cool"
+
+def test_lz78_encode_to_dict_then_decode():
+    """
+    Test that lz78 produces expected dictionary and expected list of tuples.
+    """
+    encoder = LZ78Encoder()
+    decoder = LZ78Decoder()
+
+    input_string = "EE274 cool cool"
+    data_list = [*input_string]
+    data_block = DataBlock(data_list)
+
+    encoded_tuples, dict = encoder.lz78_parse_and_generate_dict(data_block)
+    decoded_string = decoder.lz78_decode_from_tuples(encoded_tuples)
+
+    assert decoded_string == input_string
 
 
 if __name__ == "__main__":
