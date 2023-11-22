@@ -5,7 +5,7 @@ This is a fork from [Stanford Compression Library](https://github.com/kedartatwa
 
 We have discussed the LZ77 compression algorithm and its practical realization in depth during our class. LZ77 employs sliding windows (or buffer) to avoid searching too far back in the input. This approach, albeit effective, makes the selection of the buffer size critical. A smaller buffer results in reduced compression time but demands more space. Conversely, a larger buffer size reduces required space but prolongs the compression time. Consequently, the parameters of LZ77 need to be optimized according to the pattern of the input data.
 
-Since there are several universal compressors with similar features and performance, I have chosen to examine another form of dictionary-based compression also developed by Ziv and Lempel - LZ78, which is a lossless data compression algorithm that forms the basis for several ubiquitous formats, including GIF and TIFF.  The primary motivation for developing LZ78 was to create a universal compression algorithm that does not require any prior knowledge of the input and choosing of the buffer size, addressing an inherent drawback of LZ77.  
+Since there are several universal compressors with similar features and performance, I have chosen to examine another form of dictionary-based compression also developed by Ziv and Lempel - LZ78. The LZ78 algorithms, named after its inventors Abraham Lempel and Jacob Ziv with the '78' denoting its year of publication in 1978. It is a lossless data compression algorithm that forms the basis for several ubiquitous formats, including GIF and TIFF. The primary motivation for developing LZ78 was to create a universal compression algorithm that does not require any prior knowledge of the input and choosing of the buffer size, addressing an inherent drawback of LZ77.  
 
 ## Literature/Code Review
 
@@ -48,6 +48,7 @@ def lz78_compress(data):
 - [Stanford EE376C notes on Lempel-Ziv compression](https://web.stanford.edu/class/ee376a/files/EE376C_lecture_LZ.pdf)
 - [LZ78 on Wikipedia](https://en.wikipedia.org/wiki/LZ77_and_LZ78#LZ78)
 - [Data Compression APplets Library](http://www.stringology.org/DataCompression/index_en.html)
+
 ## Methods
 
 The aim is to build a Python implementation of the LZ78 algorithm, with a focus on clarity and performance. Key features to implement include:
@@ -56,6 +57,8 @@ Output encoding including variable-length bit support.
 Decoding functionality that reconstructs the original data from compressed content.
 
 I expect to achieve an implementation that can compress and decompress data files at similar or better speed and efficiency compared to LZ77. Evaluation will take place both qualitatively, through code reviews and ensuring the implementation adheres closely to the original specification, and quantitatively, through benchmarks on compression ratio and speed, comparing these with the SCL implementation of LZ77.
+
+I will also explore the effects of having an initialization dictionary, versus starting with an empty dictionary. I expect having an initialized dictionary containing common substrings pertinent to the data being compressed can improve the compression ratio. However, this does require having prior knowledge about the nature of the data.
 
 # Progress report
 ## Completed Work
