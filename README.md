@@ -1,82 +1,62 @@
-# Stanford Compression Library
-The goal of the library is to help with research in the area of data compression. This is not meant to be fast or efficient implementation, but rather for educational purpose
+This is a fork from [Stanford Compression Library](https://github.com/kedartatwawadi/stanford_compression_library) for Nan's LZ78 implementation project. 
+# LZ78 Compression Algorithm
 
-This library is currently being used for the course [EE274: Data Compression course, Fall 22](https://stanforddatacompressionclass.github.io/Fall22/) at Stanford University, to augment the lectures and for homeworks: 
-1. [EE274 Lecture materials (slides etc)](https://stanforddatacompressionclass.github.io/Fall22/lectures/)
-2. [EE274 Course notes (in progress)](https://stanforddatacompressionclass.github.io/notes/)
-3. The video recordings for lectures can be found as a [Youtube Playlist](https://youtube.com/playlist?list=PLv_7iO_xlL0Jgc35Pqn7XP5VTQ5krLMOl)
+## Introduction
 
+We have discussed the LZ77 compression algorithm and its practical realization in depth during our class. LZ77 employs sliding windows (or buffer) to avoid searching too far back in the input. This approach, albeit effective, makes the selection of the buffer size critical. A smaller buffer results in reduced compression time but demands more space. Conversely, a larger buffer size reduces required space but prolongs the compression time. Consequently, the parameters of LZ77 need to be optimized according to the pattern of the input data.
 
-## Compression algorithms
-Here is a list of algorithms implemented.
+Since there are several universal compressors with similar features and performance, I have chosen to examine another form of dictionary-based compression also developed by Ziv and Lempel - LZ78, which is a lossless data compression algorithm that forms the basis for several ubiquitous formats, including GIF and TIFF.  The primary motivation for developing LZ78 was to create a universal compression algorithm that does not require any prior knowledge of the input and choosing of the buffer size, addressing an inherent drawback of LZ77.  
 
-### Prefix-free codes
-- [Huffman codes](scl/compressors/huffman_coder.py)
-- [Shannon codes](scl/compressors/shannon_coder.py)
-- [Fano codes](scl/compressors/fano_coder.py)
-- [Shannon Fano Elias](scl/compressors/shannon_fano_elias_coder.py)
-- [Golomb codes](scl/compressors/golomb_coder.py)
-- [Universal integer coder](scl/compressors/universal_uint_coder.py)
-- [Elias Delta code](scl/compressors/elias_delta_uint_coder.py)
+## Literature/Code Review
 
-### Entropy coders
-- [rANS](scl/compressors/rANS.py)
-- [tANS](scl/compressors/tANS.py)
-- [Typical set coder](scl/compressors/typical_set_coder.py)
-- [Arithmetic coder](scl/compressors/arithmetic_coding.py)
-- [Context-based Adaptive Arithmetic coder](scl/compressors/probability_models.py)
-- [Range coder](scl/compressors/range_coder.py)
+Unlike LZ77, which defines a dictionary of phrases through a fixed-length window of text previously seen, LZ78 allows the dictionary to be a potentially limitless set of previously observed phrases. LZ78 identifies and adds phrases to a dictionary. When a phrase reoccurs, LZ78 outputs a dictionary index token instead of repeating the phrase, along with one character that follows that phrase. The new phrase (the reoccurred phrase plus the character that follows) will be added to the dictionary as a new phrase. The dictionary will be represented as a n-ary tree where n is the number of tokens used to form token sequences, and each leave will be a phrase.
 
-### Universal lossless compressors
-- [zlib (external)](scl/external_compressors/zlib_external.py)
-- [zstd (external)](scl/external_compressors/zstd_external.py)
-- [LZ77](scl/compressors/lz77.py)
-- [LZ77 (sliding window version)](scl/compressors/lz77_sliding_window.py)
+$Example$: encode **"EE274 is cool cool"**
 
+|index  |output |string |
+|-------|-------|-------|
+|1      |(0,A)  |E      |
+|2      |(1,2)  |E2     |
+|3      |(0,7)  |7      |
+|4      |(0,4)  |4      |
+|5      |(0, )  |' '    |
+|6      |(0,c)  |c      |
+|7      |(0,o)  |o      |
+|8      |(7,l)  |ol     |
+|9      |(5,c)  |' c'   |
+|10     |(7,o)  |co     |
+|11     |(8,)   |ol     |
 
-NOTE -> the tests in each file should be helpful as a "usage" example of each of the compressors. More details are on the project wiki.
-
-
-## Getting started
-- Create conda environment and install required packages:
-    ```
-    conda create --name myenv python=3.8
-    conda activate myenv
-    ```
-- Clone the repo
-    ```
-    git clone https://github.com/kedartatwawadi/stanford_compression_library.git
-    cd stanford_compression_library
-    ```
-- Install the `scl` package
-    ```
-    pip install -e . #install the package in a editable mode
-    ``` 
-
-- **Run unit tests**
-
-  To run all tests:
-    ```
-    find scl -name "*.py" -exec py.test -s -v {} +
-    ```
-
-  To run a single test
-  ```
-  py.test -s -v scl/core/data_stream.py
-  ```
-
-## Getting started with understanding the library
-In-depth information about the library will be in the comments. Tutorials/articles etc will be posted on the wiki page: 
-https://github.com/kedartatwawadi/stanford_compression_library/wiki/Introduction-to-the-Stanford-Compression-Library
-
-## How to submit code
-
-Run a formatter before submitting PR
 ```
-black <dir/file> --line-length 100
+def lz78_compress(data):
+    dictionary = {}
+    result = []
+    pos = 0
+    while pos < len(data):
+        prefix = data[pos]
+        advance = 1
+        while prefix + data[pos + advance] in dictionary:
+            prefix += data[pos + advance]
+            advance++
+        result += (dictionary[prefix], data[pos + advance])
+        dictionary[prefix + data[pos + advance]] = len(dictionary)
+        pos = pos + advance
+    return result
 ```
 
-Note that the Github actions CI uses black, so the PR will fail if black is not used. (see [`.github/workflows/black.yml`](.github/workflows/black.yml)),  
-#
-# Contact
-The best way to contact the maintainers is to file an issue with your question. 
+#### Reference:
+- [Stanford EE376C notes on Lempel-Ziv compression](https://web.stanford.edu/class/ee376a/files/EE376C_lecture_LZ.pdf)
+- [LZ78 on Wikipedia](https://en.wikipedia.org/wiki/LZ77_and_LZ78#LZ78)
+- [Data Compression APplets Library](http://www.stringology.org/DataCompression/index_en.html)
+## Methods
+
+The aim is to build a Python implementation of the LZ78 algorithm, with a focus on clarity and performance. Key features to implement include:
+Creating a dictionary trie for encoding efficiency.
+Output encoding including variable-length bit support.
+Decoding functionality that reconstructs the original data from compressed content.
+
+I expect to achieve an implementation that can compress and decompress data files at similar or better speed and efficiency compared to LZ77. Evaluation will take place both qualitatively, through code reviews and ensuring the implementation adheres closely to the original specification, and quantitatively, through benchmarks on compression ratio and speed, comparing these with the SCL implementation of LZ77.
+
+# Progress report
+## Completed Work
+## Planned Work for Remaining Weeks
