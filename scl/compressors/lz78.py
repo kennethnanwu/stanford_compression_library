@@ -3,6 +3,8 @@ from typing import List, Tuple
 from scl.core.data_encoder_decoder import DataDecoder, DataEncoder
 from scl.core.data_block import DataBlock
 from scl.utils.bitarray_utils import BitArray
+from scl.core.encoded_stream import EncodedBlockWriter, EncodedBlockReader
+from scl.core.data_stream import AsciiFileDataStream
 from lz77 import EmpiricalIntHuffmanDecoder, EmpiricalIntHuffmanEncoder, LogScaleBinnedIntegerDecoder, LogScaleBinnedIntegerEncoder
 from scl.utils.test_utils import (
     create_random_binary_file,
@@ -78,7 +80,12 @@ class LZ78Encoder(DataEncoder):
         
     def encode_tuples(self, tuples: Tuple):
         encoded_indexes = self.encode_indexes([index for index, _ in tuples])
-        encoded_literals = self.encode_literals([ord(lit) for _, lit in tuples])
+        # If the last tuple has empty string
+        _, last_literal = tuples[-1]
+        if last_literal == "":
+            encoded_literals = self.encode_literals([ord(lit) for _, lit in tuples[:-1]])
+        else:
+            encoded_literals = self.encode_literals([ord(lit) for _, lit in tuples])
         return encoded_indexes + encoded_literals
     
     def encode_block(self, data_block: DataBlock):
@@ -87,6 +94,19 @@ class LZ78Encoder(DataEncoder):
         # now encode sequences and literals
         encoded_bitarray = self.encode_tuples(lz78_tuples)
         return encoded_bitarray
+
+    def encode_file(self, input_file_path: str, encoded_file_path: str, block_size: int = 10000):
+        """utility wrapper around the encode function using Uint8FileDataStream
+
+        Args:
+            input_file_path (str): path of the input file
+            encoded_file_path (str): path of the encoded binary file
+            block_size (int): choose the block size to be used to call the encode function
+        """
+        # call the encode function and write to the binary file
+        with AsciiFileDataStream(input_file_path, "rb") as fds:
+            with EncodedBlockWriter(encoded_file_path) as writer:
+                self.encode(fds, block_size=block_size, encode_writer=writer)
 
 
 class LZ78Decoder(DataDecoder):
@@ -128,6 +148,7 @@ class LZ78Decoder(DataDecoder):
             output.append(new_string)
         decoded_input = ''.join(output)
         decoded_list = [*decoded_input]
+        decoded_list = [ord(s) for s in decoded_list]
         return decoded_input, decoded_list
 
     def decode_indexes(self, encoded_bitarray: BitArray):
@@ -155,10 +176,28 @@ class LZ78Decoder(DataDecoder):
         literals, num_bits_consumed_literals = self.decode_literals(encoded_bitarray)
         num_bits_consumed = num_bits_consumed_sequences + num_bits_consumed_literals
 
+        # If the last tuple had empty symbol, then literals will have one less item than indexes
+        if len(literals) + 1 == len(indexes):
+            literals.append("")
+        else:
+            assert len(literals) == len(indexes)
         encoded_tuples = [(z[0], z[1]) for z in zip(indexes, literals)]
         _, decoded_list = self.lz78_decode_from_tuples(encoded_tuples)
 
         return DataBlock(decoded_list), num_bits_consumed
+
+    def decode_file(self, encoded_file_path: str, output_file_path: str):
+        """utility wrapper around the decode function using Uint8FileDataStream
+
+        Args:
+            encoded_file_path (str): input binary file
+            output_file_path (str): output (text) file to which decoded data is written
+        """
+
+        # decode data and write output to a text file
+        with EncodedBlockReader(encoded_file_path) as reader:
+            with AsciiFileDataStream(output_file_path, "wb") as fds:
+                self.decode(reader, fds)
 
 
 def test_lz78_encode_to_dict():
@@ -239,23 +278,15 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--decompress", help="decompress", action="store_true")
     parser.add_argument("-i", "--input", help="input file", required=True, type=str)
     parser.add_argument("-o", "--output", help="output file", required=True, type=str)
-    parser.add_argument(
-        "-w", "--window_init", help="initialize window from file (like zstd dictionary)", type=str
-    )
 
     # constants
     BLOCKSIZE = 100_000  # encode in 100 KB blocks
 
     args = parser.parse_args()
 
-    initial_window = None
-    if args.window_init is not None:
-        with open(args.window_init, "rb") as f:
-            initial_window = list(f.read())
-
     if args.decompress:
-        decoder = LZ78Decoder(initial_window=initial_window)
+        decoder = LZ78Decoder()
         decoder.decode_file(args.input, args.output)
     else:
-        encoder = LZ78Encoder(initial_window=initial_window)
+        encoder = LZ78Encoder()
         encoder.encode_file(args.input, args.output, block_size=BLOCKSIZE)

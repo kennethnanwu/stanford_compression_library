@@ -258,6 +258,25 @@ class Uint8FileDataStream(FileDataStream):
         self.file_obj.write(bytes([s]))
 
 
+class AsciiFileDataStream(Uint8FileDataStream):
+    """Read/write text data in ascii encoding"""
+
+    def get_symbol(self):
+        """get the next byte from the text file as ascii character.
+        Read as 8-bit unsigned int then convert to character.
+
+        Returns:
+            (str, None): the next byte, None if we reached the end of stream
+        """
+        s = self.file_obj.read(1)
+        if not s:
+            return None
+        # byteorder doesn't really matter because we just have a single byte
+        int_val = int.from_bytes(s, byteorder="big")
+        assert 0 <= int_val <= 255
+        return chr(int_val)
+
+
 #################################
 
 
