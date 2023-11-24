@@ -4,11 +4,9 @@ from scl.core.data_encoder_decoder import DataDecoder, DataEncoder
 from scl.core.data_block import DataBlock
 from scl.utils.bitarray_utils import BitArray
 from scl.core.encoded_stream import EncodedBlockWriter, EncodedBlockReader
-from scl.core.data_stream import AsciiFileDataStream
+from scl.core.data_stream import Uint8FileDataStream, TextFileDataStream
 from lz77 import EmpiricalIntHuffmanDecoder, EmpiricalIntHuffmanEncoder, LogScaleBinnedIntegerDecoder, LogScaleBinnedIntegerEncoder
 from scl.utils.test_utils import (
-    create_random_binary_file,
-    try_file_lossless_compression,
     try_lossless_compression,
 )
 
@@ -34,26 +32,26 @@ class LZ78Encoder(DataEncoder):
     def lz78_parse_and_generate_dict(self, data_block: DataBlock):
         dictionary = self.dictionary
         output = []
-        prefix = ""
         dict_index = 1
         input_data = data_block.data_list
+        input_size = len(input_data)
+        start = 0
 
-        for symbol in input_data:
-            new_string = prefix + symbol
-            # If prefix string + current character is in the dictionary, advance to the next character.
-            if new_string in dictionary:
-                prefix = new_string
+        for end in range(1, input_size+1):
+            new_string = tuple(input_data[start:end])
             # If the prefix string + current character is not in the dictionary, add
             # (index of the prefix, current character) tuple to the output and the dictionary
-            else:
-                output.append((dictionary.get(prefix, 0), symbol))
+            if new_string not in dictionary:
+                prefix = tuple(input_data[start:end-1])
+                output.append((dictionary.get(prefix, 0), input_data[end-1]))
                 dictionary[new_string] = dict_index
                 dict_index += 1
-                prefix = ""
+                start = end
+            # Else if prefix string + current character is in the dictionary, advance to the next character.
         
         # Handle edge case when the last part of the input is in the dictionary
-        if prefix:
-            output.append((dictionary[prefix], ""))
+        if start != input_size:
+            output.append((dictionary[tuple(input_data[start:input_size])], None))
 
         return output, dictionary
                 
@@ -82,10 +80,10 @@ class LZ78Encoder(DataEncoder):
         encoded_indexes = self.encode_indexes([index for index, _ in tuples])
         # If the last tuple has empty string
         _, last_literal = tuples[-1]
-        if last_literal == "":
-            encoded_literals = self.encode_literals([ord(lit) for _, lit in tuples[:-1]])
+        if last_literal is None:
+            encoded_literals = self.encode_literals([lit for _, lit in tuples[:-1]])
         else:
-            encoded_literals = self.encode_literals([ord(lit) for _, lit in tuples])
+            encoded_literals = self.encode_literals([lit for _, lit in tuples])
         return encoded_indexes + encoded_literals
     
     def encode_block(self, data_block: DataBlock):
@@ -104,7 +102,7 @@ class LZ78Encoder(DataEncoder):
             block_size (int): choose the block size to be used to call the encode function
         """
         # call the encode function and write to the binary file
-        with AsciiFileDataStream(input_file_path, "rb") as fds:
+        with Uint8FileDataStream(input_file_path, "rb") as fds:
             with EncodedBlockWriter(encoded_file_path) as writer:
                 self.encode(fds, block_size=block_size, encode_writer=writer)
 
@@ -139,17 +137,18 @@ class LZ78Decoder(DataDecoder):
         dict_index = 1
         
         for index, symbol in encoded_tuples:
-            new_string = symbol
+            if symbol is None: # last tuple could have None symbol as the last part of the input is in the dicitonary
+                output.extend(dictionary[index])
+                return output
+
+            new_string = tuple([symbol])
             if index != 0:
-                new_string = dictionary[index] + symbol
+                new_string = dictionary[index] + new_string
 
             dictionary[dict_index] = new_string
             dict_index += 1
-            output.append(new_string)
-        decoded_input = ''.join(output)
-        decoded_list = [*decoded_input]
-        decoded_list = [ord(s) for s in decoded_list]
-        return decoded_input, decoded_list
+            output.extend(new_string)
+        return output
 
     def decode_indexes(self, encoded_bitarray: BitArray):
         log_scale_binned_coder = LogScaleBinnedIntegerDecoder(
@@ -168,7 +167,7 @@ class LZ78Decoder(DataDecoder):
         literals, num_bits_consumed = EmpiricalIntHuffmanDecoder(alphabet_size=256).decode_block(
             encoded_bitarray
         )
-        return [chr(l) for l in literals.data_list], num_bits_consumed
+        return [l for l in literals.data_list], num_bits_consumed
     
     def decode_block(self, encoded_bitarray: BitArray):
         indexes, num_bits_consumed_sequences = self.decode_indexes(encoded_bitarray)
@@ -178,11 +177,11 @@ class LZ78Decoder(DataDecoder):
 
         # If the last tuple had empty symbol, then literals will have one less item than indexes
         if len(literals) + 1 == len(indexes):
-            literals.append("")
+            literals.append(None)
         else:
             assert len(literals) == len(indexes)
         encoded_tuples = [(z[0], z[1]) for z in zip(indexes, literals)]
-        _, decoded_list = self.lz78_decode_from_tuples(encoded_tuples)
+        decoded_list = self.lz78_decode_from_tuples(encoded_tuples)
 
         return DataBlock(decoded_list), num_bits_consumed
 
@@ -196,7 +195,7 @@ class LZ78Decoder(DataDecoder):
 
         # decode data and write output to a text file
         with EncodedBlockReader(encoded_file_path) as reader:
-            with AsciiFileDataStream(output_file_path, "wb") as fds:
+            with Uint8FileDataStream(output_file_path, "wb") as fds:
                 self.decode(reader, fds)
 
 
@@ -212,17 +211,45 @@ def test_lz78_encode_to_dict():
 
     expected_output = [(0,"E"), (1,"2"), (0,"7"), (0,"4"), (0," "), (0,"c"), (0,"o"), (7,"l"), (5,"c"), (7,"o"), (0,"l")]
     expected_dict = {
-        "E": 1,
-        "E2":2,
-        "7": 3,
-        "4": 4,
-        " ": 5,
-        "c": 6,
-        "o": 7,
-        "ol":8,
-        " c":9,
-        "oo":10,
-        "l": 11,
+        ("E",): 1,
+        ("E", "2"): 2,
+        ("7",): 3,
+        ("4",): 4,
+        (" ",): 5,
+        ("c",): 6,
+        ("o",): 7,
+        ("o", "l"): 8,
+        (" ", "c"): 9,
+        ("o", "o"): 10,
+        ("l",): 11,
+    }
+    output, dict = encoder.lz78_parse_and_generate_dict(data_block)
+
+    assert output == expected_output
+    assert dict == expected_dict
+
+def test_lz78_encode_to_dict_end_matched():
+    """
+    Test that lz78 produces expected dictionary and expected list of tuples.
+    """
+    encoder = LZ78Encoder()
+
+    input_string = "EE274 cool co"
+    data_list = [*input_string]
+    data_block = DataBlock(data_list)
+
+    expected_output = [(0,"E"), (1,"2"), (0,"7"), (0,"4"), (0," "), (0,"c"),
+                       (0,"o"), (7,"l"), (5,"c"), (7,None)]
+    expected_dict = {
+        ("E",): 1,
+        ("E", "2"): 2,
+        ("7",): 3,
+        ("4",): 4,
+        (" ",): 5,
+        ("c",): 6,
+        ("o",): 7,
+        ("o", "l"): 8,
+        (" ", "c"): 9,
     }
     output, dict = encoder.lz78_parse_and_generate_dict(data_block)
 
@@ -236,9 +263,8 @@ def test_lz77_decode_from_dict():
     input = "EE274 cool cool"
     input_tuples = [(0,"E"), (1,"2"), (0,"7"), (0,"4"), (0," "), (0,"c"), (0,"o"), (7,"l"), (5,"c"), (7,"o"), (0,"l")]
     decoder = LZ78Decoder()
-    decoded_input, decoded_list = decoder.lz78_decode_from_tuples(input_tuples)
+    decoded_list = decoder.lz78_decode_from_tuples(input_tuples)
 
-    assert decoded_input == input
     assert decoded_list == [*input]
 
 def test_lz78_encode_to_dict_then_decode():
@@ -253,9 +279,8 @@ def test_lz78_encode_to_dict_then_decode():
     data_block = DataBlock(data_list)
 
     encoded_tuples, dict = encoder.lz78_parse_and_generate_dict(data_block)
-    decoded_input, decoded_list = decoder.lz78_decode_from_tuples(encoded_tuples)
+    decoded_list = decoder.lz78_decode_from_tuples(encoded_tuples)
 
-    assert decoded_input == input_string
     assert decoded_list == data_list
 
 def test_lz78_encode_decode_e2e():
@@ -265,7 +290,7 @@ def test_lz78_encode_decode_e2e():
     encoder = LZ78Encoder()
     decoder = LZ78Decoder()
 
-    input_string = "EE274 cool cool"
+    input_string = b"EE274 cool cool"
     data_list = [*input_string]
     data_block = DataBlock(data_list)
     is_lossless, _, _ = try_lossless_compression(data_block, encoder, decoder)
