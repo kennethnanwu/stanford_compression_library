@@ -58,9 +58,7 @@ class LZ78Encoder(DataEncoder):
         return output, dictionary
                 
     def encode_indexes(self, indexes: List):
-        log_scale_binned_coder = LogScaleBinnedIntegerEncoder(
-            offset=self.log_scale_binned_coder_offset
-        )
+        log_scale_binned_coder = LogScaleBinnedIntegerEncoder()
         return log_scale_binned_coder.encode_block(
             DataBlock(indexes)
         )
@@ -73,16 +71,17 @@ class LZ78Encoder(DataEncoder):
         Args:
             encoded_bitarray (BitArray): encoded bit array
         """
-        encoded_bitarray = EmpiricalIntHuffmanEncoder(alphabet_size=256).encode_block(
-            DataBlock(literals)
-        )
+        # encoded_bitarray = EmpiricalIntHuffmanEncoder(alphabet_size=256).encode_block(
+        #     DataBlock(literals)
+        # )
+        encoded_bitarray = LogScaleBinnedIntegerEncoder(offset=self.log_scale_binned_coder_offset).encode_block(DataBlock(literals))
         return encoded_bitarray
         
     def encode_tuples(self, tuples: Tuple):
         encoded_indexes = self.encode_indexes([index for index, _ in tuples])
         # If the last tuple has empty string
         _, last_literal = tuples[-1]
-        if last_literal == "":
+        if not last_literal:
             encoded_literals = self.encode_literals([ord(lit) for _, lit in tuples[:-1]])
         else:
             encoded_literals = self.encode_literals([ord(lit) for _, lit in tuples])
@@ -95,18 +94,6 @@ class LZ78Encoder(DataEncoder):
         encoded_bitarray = self.encode_tuples(lz78_tuples)
         return encoded_bitarray
 
-    def encode_file(self, input_file_path: str, encoded_file_path: str, block_size: int = 10000):
-        """utility wrapper around the encode function using Uint8FileDataStream
-
-        Args:
-            input_file_path (str): path of the input file
-            encoded_file_path (str): path of the encoded binary file
-            block_size (int): choose the block size to be used to call the encode function
-        """
-        # call the encode function and write to the binary file
-        with AsciiFileDataStream(input_file_path, "rb") as fds:
-            with EncodedBlockWriter(encoded_file_path) as writer:
-                self.encode(fds, block_size=block_size, encode_writer=writer)
 
 
 class LZ78Decoder(DataDecoder):
@@ -148,13 +135,10 @@ class LZ78Decoder(DataDecoder):
             output.append(new_string)
         decoded_input = ''.join(output)
         decoded_list = [*decoded_input]
-        decoded_list = [ord(s) for s in decoded_list]
         return decoded_input, decoded_list
 
     def decode_indexes(self, encoded_bitarray: BitArray):
-        log_scale_binned_coder = LogScaleBinnedIntegerDecoder(
-            offset=self.log_scale_binned_coder_offset
-        )
+        log_scale_binned_coder = LogScaleBinnedIntegerDecoder()
         indexes, num_bits_consumed = log_scale_binned_coder.decode_block(encoded_bitarray)
         return indexes.data_list, num_bits_consumed
             
@@ -165,7 +149,10 @@ class LZ78Decoder(DataDecoder):
         Args:
             encoded_bitarray (BitArray): encoded bit array
         """
-        literals, num_bits_consumed = EmpiricalIntHuffmanDecoder(alphabet_size=256).decode_block(
+        # literals, num_bits_consumed = EmpiricalIntHuffmanDecoder(alphabet_size=256).decode_block(
+        #     encoded_bitarray
+        # )
+        literals, num_bits_consumed = LogScaleBinnedIntegerDecoder(offset=self.log_scale_binned_coder_offset).decode_block(
             encoded_bitarray
         )
         return [chr(l) for l in literals.data_list], num_bits_consumed
@@ -186,18 +173,6 @@ class LZ78Decoder(DataDecoder):
 
         return DataBlock(decoded_list), num_bits_consumed
 
-    def decode_file(self, encoded_file_path: str, output_file_path: str):
-        """utility wrapper around the decode function using Uint8FileDataStream
-
-        Args:
-            encoded_file_path (str): input binary file
-            output_file_path (str): output (text) file to which decoded data is written
-        """
-
-        # decode data and write output to a text file
-        with EncodedBlockReader(encoded_file_path) as reader:
-            with AsciiFileDataStream(output_file_path, "wb") as fds:
-                self.decode(reader, fds)
 
 
 def test_lz78_encode_to_dict():
@@ -280,13 +255,17 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--output", help="output file", required=True, type=str)
 
     # constants
-    BLOCKSIZE = 100_000  # encode in 100 KB blocks
+    BLOCKSIZE = 400_000  # encode in 100 KB blocks
 
     args = parser.parse_args()
 
     if args.decompress:
-        decoder = LZ78Decoder()
+        decoder = LZ78Decoder(
+            log_scale_binned_coder_offset = 128,
+        )
         decoder.decode_file(args.input, args.output)
     else:
-        encoder = LZ78Encoder()
+        encoder = LZ78Encoder(
+            log_scale_binned_coder_offset = 128,
+        )
         encoder.encode_file(args.input, args.output, block_size=BLOCKSIZE)
