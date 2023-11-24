@@ -71,20 +71,18 @@ class LZ78Encoder(DataEncoder):
         Args:
             encoded_bitarray (BitArray): encoded bit array
         """
-        # encoded_bitarray = EmpiricalIntHuffmanEncoder(alphabet_size=256).encode_block(
-        #     DataBlock(literals)
-        # )
-        encoded_bitarray = LogScaleBinnedIntegerEncoder(offset=self.log_scale_binned_coder_offset).encode_block(DataBlock(literals))
+        # If the last tuple has empty string, empty string cannot be encoded by the encoder
+        if not literals[-1]:
+            literals = literals[:-1]
+        # Convert the unicode integer
+        literals = [ord(l) for l in literals]
+        log_scale_binned_coder = LogScaleBinnedIntegerEncoder(offset=self.log_scale_binned_coder_offset)
+        encoded_bitarray = log_scale_binned_coder.encode_block(DataBlock(literals))
         return encoded_bitarray
         
     def encode_tuples(self, tuples: Tuple):
         encoded_indexes = self.encode_indexes([index for index, _ in tuples])
-        # If the last tuple has empty string
-        _, last_literal = tuples[-1]
-        if not last_literal:
-            encoded_literals = self.encode_literals([ord(lit) for _, lit in tuples[:-1]])
-        else:
-            encoded_literals = self.encode_literals([ord(lit) for _, lit in tuples])
+        encoded_literals = self.encode_literals([lit for _, lit in tuples])
         return encoded_indexes + encoded_literals
     
     def encode_block(self, data_block: DataBlock):
@@ -155,6 +153,7 @@ class LZ78Decoder(DataDecoder):
         literals, num_bits_consumed = LogScaleBinnedIntegerDecoder(offset=self.log_scale_binned_coder_offset).decode_block(
             encoded_bitarray
         )
+        # Convert from unicode interger back to symbol
         return [chr(l) for l in literals.data_list], num_bits_consumed
     
     def decode_block(self, encoded_bitarray: BitArray):
