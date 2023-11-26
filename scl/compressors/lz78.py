@@ -12,6 +12,7 @@ from scl.utils.test_utils import (
     try_lossless_compression,
 )
 
+_test_print_100 = 100
 class LZ78Encoder(DataEncoder):
     def __init__(
         self,
@@ -71,10 +72,10 @@ class LZ78Encoder(DataEncoder):
         Args:
             encoded_bitarray (BitArray): encoded bit array
         """
-        # If the last tuple has empty string, empty string cannot be encoded by the encoder
+        # If the last tuple has empty string, skip it. Because empty string cannot be encoded to a number.
         if not literals[-1]:
             literals = literals[:-1]
-        # Convert the unicode integer
+        # Convert to Unicode integer
         literals = [ord(l) for l in literals]
         log_scale_binned_coder = LogScaleBinnedIntegerEncoder(offset=self.log_scale_binned_coder_offset)
         encoded_bitarray = log_scale_binned_coder.encode_block(DataBlock(literals))
@@ -86,9 +87,9 @@ class LZ78Encoder(DataEncoder):
         return encoded_indexes + encoded_literals
     
     def encode_block(self, data_block: DataBlock):
-        # first do lz77 parsing
+        # first do lz78 parsing
         lz78_tuples, dictionary = self.lz78_parse_and_generate_dict(data_block)
-        # now encode sequences and literals
+        # now encode (index, literal) tuples
         encoded_bitarray = self.encode_tuples(lz78_tuples)
         return encoded_bitarray
 
