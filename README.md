@@ -62,4 +62,9 @@ I will also explore the effects of having an initialization dictionary, versus s
 
 # Progress report
 ## Completed Work
+- Successfully implemented the core of the lz78 algorithm - converting original input into a dictionary of previously seen patterns and a list of (index, next char) tuples, and later converting the list of tuples back to the original content.
+- Added several test cases to verify the correctness of the algorithm. It's able to convert string input into a list of index and next character tuples.
+- Implemented functions to encode the list of tuples into bit arrays, as well as decode bit arrays back to a list of tuples.
+- Ran analysis on the algorithm to understand its correctness and performance by using the same sherlock text file we used in HW2 to test my algorithms. The compressed file was 3k larger than using lz77: 12.7k vs.15.8k; the decompressed file "looked" the same as the original file, but it didn't pass the `cmp` test and was actually 8KB less than the original file.
+
 ## Planned Work for Remaining Weeks
