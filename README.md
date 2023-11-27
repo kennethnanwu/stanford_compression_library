@@ -9,23 +9,40 @@ Since there are several universal compressors with similar features and performa
 
 ## Literature/Code Review
 
-Unlike LZ77, which defines a dictionary of phrases through a fixed-length window of text previously seen, LZ78 allows the dictionary to be a potentially limitless set of previously observed phrases. LZ78 identifies and adds phrases to a dictionary. When a phrase reoccurs, LZ78 outputs a dictionary index token instead of repeating the phrase, along with one character that follows that phrase. The new phrase (the reoccurred phrase plus the character that follows) will be added to the dictionary as a new phrase. The dictionary will be represented as a n-ary tree where n is the number of tokens used to form token sequences, and each leave will be a phrase.
+Unlike LZ77, which defines a dictionary of phrases through a fixed-length window of text previously seen, LZ78 allows the dictionary to be a potentially limitless set of previously observed phrases. LZ78 identifies and adds phrases to a dictionary. When a phrase reoccurs, LZ78 outputs a dictionary index token instead of repeating the phrase, along with one character that follows that phrase. The new phrase (the reoccurred phrase plus the character that follows) will be added to the dictionary as a new phrase.
 
-$Example$: encode **"EE274 cool cool"**
+#### Reference:
+- [Stanford EE376C notes on Lempel-Ziv compression](https://web.stanford.edu/class/ee376a/files/EE376C_lecture_LZ.pdf)
+- [LZ78 on Wikipedia](https://en.wikipedia.org/wiki/LZ77_and_LZ78#LZ78)
+- [Data Compression APplets Library](http://www.stringology.org/DataCompression/index_en.html)
 
-|index  |output |string |
-|-------|-------|-------|
-|1      |(0,A)  |E      |
-|2      |(1,2)  |E2     |
-|3      |(0,7)  |7      |
-|4      |(0,4)  |4      |
-|5      |(0, )  |' '    |
-|6      |(0,c)  |c      |
-|7      |(0,o)  |o      |
-|8      |(7,l)  |ol     |
-|9      |(5,c)  |' c'   |
-|10     |(7,o)  |co     |
-|11     |(8,)   |ol     |
+## Methods
+
+The aim is to build a Python implementation of the LZ78 algorithm, with a focus on clarity and performance. Key features to implement include:
+Creating a dictionary trie for encoding efficiency.
+Output encoding including variable-length bit support.
+Decoding functionality that reconstructs the original data from compressed content.
+
+I expect to achieve an implementation that can compress and decompress data files at similar or better speed and efficiency compared to LZ77. Evaluation will take place both qualitatively, through code reviews and ensuring the implementation adheres closely to the original specification, and quantitatively, through benchmarks on compression ratio and speed, comparing these with the SCL implementation of LZ77.
+
+I will also explore the effects of having an initialization dictionary, versus starting with an empty dictionary. I expect having an initialized dictionary containing common substrings pertinent to the data being compressed can improve the compression ratio. However, this does require having prior knowledge about the nature of the data.
+
+LZ78 works by identifing and adding past phrases to a dictionary. When a phrase reoccurs, LZ78 outputs a dictionary index token of that phrase instead of repeating the phrase, along with one character that follows that phrase. The new phrase (the reoccurred phrase plus the character that follows) will be added to the dictionary as a new phrase.  The dictionary index and the following character form a tuple, and the tuple is added to a list. The output of a LZ78 compression will be this list of tuples. These tuples are then entropy coded. LZ77 forms the basis of popular compressors like GIF.
+
+The encoder and decoder have 1 parameter:
+- initial_dic: Initialization dictionary to use for encoding and decoding to potentially speed up the "initialization" of the dictionary. That is, the initialization dictionary should contains common phrases and words of the input. This should help increase the compression ratio by representing the first first few commonly seen words/phrases with dictionary indexes.
+
+The algorithm:
+
+- keep a dictionary that stores a map from previousely seen strings to its position in the output list.
+- keep a list of tuples of the dictionary index of the previously seens phrase and the character
+that follows. In case there is no match in the dictionary, using 0 as the index. This is the ouptut list.
+- to find a match during parsing, we look up future substring in the input and then find the longest
+match in the dictionary keys. The value of this key is the index of the substring in the output
+list. The index and the following character forms a tuple which is then put into the output list.
+We then append the folliwng character to this substring to form a new substring. This new substring
+will be stored in the dictionary as a key, whose value will be the length of the output list.
+
 
 ```
 def lz78_compress(data):
@@ -44,21 +61,34 @@ def lz78_compress(data):
     return result
 ```
 
-#### Reference:
-- [Stanford EE376C notes on Lempel-Ziv compression](https://web.stanford.edu/class/ee376a/files/EE376C_lecture_LZ.pdf)
-- [LZ78 on Wikipedia](https://en.wikipedia.org/wiki/LZ77_and_LZ78#LZ78)
-- [Data Compression APplets Library](http://www.stringology.org/DataCompression/index_en.html)
+$Example$: encode **"EE274 cool cool"**
 
-## Methods
+|index  |output |string |
+|-------|-------|-------|
+|1      |(0,A)  |E      |
+|2      |(1,2)  |E2     |
+|3      |(0,7)  |7      |
+|4      |(0,4)  |4      |
+|5      |(0, )  |' '    |
+|6      |(0,c)  |c      |
+|7      |(0,o)  |o      |
+|8      |(7,l)  |ol     |
+|9      |(5,c)  |' c'   |
+|10     |(7,o)  |co     |
+|11     |(8,)   |ol     |
 
-The aim is to build a Python implementation of the LZ78 algorithm, with a focus on clarity and performance. Key features to implement include:
-Creating a dictionary trie for encoding efficiency.
-Output encoding including variable-length bit support.
-Decoding functionality that reconstructs the original data from compressed content.
 
-I expect to achieve an implementation that can compress and decompress data files at similar or better speed and efficiency compared to LZ77. Evaluation will take place both qualitatively, through code reviews and ensuring the implementation adheres closely to the original specification, and quantitatively, through benchmarks on compression ratio and speed, comparing these with the SCL implementation of LZ77.
+Encode into bytearrays:
+- Tuples are formed by (index, literal)
+- Literals are treated as Unicode and converted to integer using Python's ord() function.
+- Indexes and literals in Unicode integer format are then encoded by first binning the integer
+  in log scale and then encoding with empirical Huffman coder, and the difference to 2^logarithm
+  (residual) as plain old bits. See LogScaleBinnedIntegerEncoder for details.
 
-I will also explore the effects of having an initialization dictionary, versus starting with an empty dictionary. I expect having an initialized dictionary containing common substrings pertinent to the data being compressed can improve the compression ratio. However, this does require having prior knowledge about the nature of the data.
+Current limitations:
+1. During compression we allow the dictionary to grow limitless. We could enforce
+    a length on which the dictionary could not add more entries to limit the 
+    memory usage.
 
 # Progress report
 ## Completed Work
