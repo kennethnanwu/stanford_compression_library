@@ -97,4 +97,14 @@ Current limitations:
 - Implemented functions to encode the list of tuples into bit arrays, as well as decode bit arrays back to a list of tuples.
 - Ran analysis on the algorithm to understand its correctness and performance by using the same sherlock text file we used in HW2 to test my algorithms. The compressed file was 3k larger than using lz77: 12.7k vs.15.8k; the decompressed file "looked" the same as the original file, but it didn't pass the `cmp` test and was actually 8KB less than the original file.
 
+Benchmarks:
+| File                                | raw size | scl-lz77 size    | wunan-lz78 size |
+|-------------------------------------|----------|------------------|-----------------|
+| alice29.txt                         |152089    |54106             |68850            |
+| sherlock.txt                        |387870    |127092            |158910           |
+
 ## Planned Work for Remaining Weeks
+- Figure out why the decompressed file is smaller than the original file and fix the issue. (I suspect it has something to do with how we read and write the file, some unicode/ascii formating issues).
+- Run more analysis on benchmark numbers.
+- Currently the compression ratio is worse than lz77. Find ways to improve it. Some ideas: maybe some common substrings are represented in large numbers. Verify this hypothesis, and if it is true can we find ways to use smaller number to represent them? 
+- Indexes and literals are encoded to bytearray using the empirical Huffman encoder implementation in scl-lz77. Try different encoders to see if it helps with compression ratio.
