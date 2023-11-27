@@ -1,3 +1,53 @@
+"""
+LZ78 works by identifing and adding past phrases to a dictionary. When a phrase reoccurs,
+LZ78 outputs a dictionary index token of that phrase instead of repeating the phrase,
+along with one character that follows that phrase. The new phrase (the reoccurred phrase
+plus the character that follows) will be added to the dictionary as a new phrase. 
+The dictionary index and the following character form a tuple, and the tuple is added
+to a list. The output of a LZ78 compression will be this list of tuples.
+These tuples are then entropy coded. LZ77 forms the basis of popular compressors like GIF.
+
+The encoder and decoder have 1 parameter:
+- initial_dic: Initialization dictionary to use for encoding and decoding to potentially
+speed up the "initialization" of the dictionary. That is, the initialization dictionary
+should contains common phrases and words of the input. This should help increase
+the compression ratio by representing the first first few commonly seen words/phrases
+with dictionary indexes.
+
+The algorithm:
+
+- keep a dictionary that stores a map from previousely seen strings to its position in the output list.
+- keep a list of tuples of the dictionary index of the previously seens phrase and the character
+that follows. In case there is no match in the dictionary, using 0 as the index. This is the ouptut list.
+- to find a match during parsing, we look up future substring in the input and then find the longest
+match in the dictionary keys. The value of this key is the index of the substring in the output
+list. The index and the following character forms a tuple which is then put into the output list.
+We then append the folliwng character to this substring to form a new substring. This new substring
+will be stored in the dictionary as a key, whose value will be the length of the output list.
+
+Entropy encoding:
+- Tuples are formed by (index, literal)
+- Literals are treated as Unicode and converted to integer using Python's ord() function.
+- Indexes and literals in Unicode integer format are then encoded by first binning the integer
+  in log scale and then encoding with empirical Huffman coder, and the difference to 2^logarithm
+  (residual) as plain old bits. See LogScaleBinnedIntegerEncoder for details.
+
+Current limitations:
+1. During compression we allow the dictionary to grow limitless. We could enforce
+    a length on which the dictionary could not add more entries to limit the 
+    memory usage.
+
+Benchmarks on a few files from https://github.com/nemequ/squash-corpus and
+https://corpus.canterbury.ac.nz/descriptions/#cantrbry (plus a few handmade).
+
+All sizes are in bytes.
+
+| File                                | raw size | scl-lz77 size    | wunan-lz78 size |
+|-------------------------------------|----------|------------------|-----------------|
+| alice29.txt                         |152089    |54106             |68850            |
+| sherlock.txt                        |387870    |127092            |158910           |
+
+"""
 import argparse
 from typing import List, Tuple
 from scl.core.data_encoder_decoder import DataDecoder, DataEncoder
@@ -79,6 +129,10 @@ class LZ78Encoder(DataEncoder):
         literals = [ord(l) for l in literals]
         log_scale_binned_coder = LogScaleBinnedIntegerEncoder(offset=self.log_scale_binned_coder_offset)
         encoded_bitarray = log_scale_binned_coder.encode_block(DataBlock(literals))
+
+        # # Try using Huffman for ascii inputs
+        # encoded_bitarray = EmpiricalIntHuffmanEncoder(alphabet_size=128).encode_block(DataBlock(literals))
+        
         return encoded_bitarray
         
     def encode_tuples(self, tuples: Tuple):
@@ -148,9 +202,11 @@ class LZ78Decoder(DataDecoder):
         Args:
             encoded_bitarray (BitArray): encoded bit array
         """
-        # literals, num_bits_consumed = EmpiricalIntHuffmanDecoder(alphabet_size=256).decode_block(
+        # Huffman for ASCII input
+        # literals, num_bits_consumed = EmpiricalIntHuffmanDecoder(alphabet_size=128).decode_block(
         #     encoded_bitarray
         # )
+
         literals, num_bits_consumed = LogScaleBinnedIntegerDecoder(offset=self.log_scale_binned_coder_offset).decode_block(
             encoded_bitarray
         )
