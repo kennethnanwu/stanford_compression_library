@@ -42,10 +42,14 @@ https://corpus.canterbury.ac.nz/descriptions/#cantrbry (plus a few handmade).
 
 All sizes are in bytes.
 
-| File                                | raw size | scl-lz77 size    | wunan-lz78 size |
-|-------------------------------------|----------|------------------|-----------------|
-| alice29.txt                         |152089    |54106             |68850            |
-| sherlock.txt                        |387870    |127092            |158910           |
+| File                       | raw size | scl-lz77 size| wunan-lz78 size                        | scl-lz77 encode time   | scl-lz77 decode time   | lz78 encode time    | lz78 decode time  |
+|----------------------------|----------|--------------|----------------------------------------|------------------------|------------------------|---------------------|-------------------|
+| alice29.txt                |152089    |54106         |68850,57702 (with initialization dict)  |   0.645s               |  0.551s                | 0.264s              |   1.180s          |
+| sherlock.txt               |387871    |127092        |158910,131262 (with initialization dict)|   1.574s               |  0.147s                | 0.389s              |   4.615s          |
+| asyoulike.txt              |125179    |49175         |61097,51601 (with initialization dict)  |   0.525s               |  0.565s                | 0.282s              |   0.998s          |
+| bootstrap-3.3.6.min.css    |121260    |20126         |45436,32901 (with initialization dict)  |   0.574s               |  0.336s                | 0.239s              |   0.664s          |
+| sherlock_large.txt         |3623080   |124268        |1149852,892867(with initialization dict)|   5.970s               |  1.483s                | 1.974s              |   27.282s         |
+| randomly generated char txt|1048576   |757244        |790829                                  |   2.051s               |  21.874s               | 1.021s              |   34.803s         |
 
 """
 import argparse
@@ -53,16 +57,11 @@ from typing import List, Tuple
 from scl.core.data_encoder_decoder import DataDecoder, DataEncoder
 from scl.core.data_block import DataBlock
 from scl.utils.bitarray_utils import BitArray
-from scl.core.encoded_stream import EncodedBlockWriter, EncodedBlockReader
-from scl.core.data_stream import AsciiFileDataStream
 from lz77 import EmpiricalIntHuffmanDecoder, EmpiricalIntHuffmanEncoder, LogScaleBinnedIntegerDecoder, LogScaleBinnedIntegerEncoder
 from scl.utils.test_utils import (
-    create_random_binary_file,
-    try_file_lossless_compression,
     try_lossless_compression,
 )
 
-_test_print_100 = 100
 class LZ78Encoder(DataEncoder):
     def __init__(
         self,
@@ -127,11 +126,8 @@ class LZ78Encoder(DataEncoder):
             literals = literals[:-1]
         # Convert to Unicode integer
         literals = [ord(l) for l in literals]
-        log_scale_binned_coder = LogScaleBinnedIntegerEncoder(offset=self.log_scale_binned_coder_offset)
-        encoded_bitarray = log_scale_binned_coder.encode_block(DataBlock(literals))
 
-        # # Try using Huffman for ascii inputs
-        # encoded_bitarray = EmpiricalIntHuffmanEncoder(alphabet_size=128).encode_block(DataBlock(literals))
+        encoded_bitarray = EmpiricalIntHuffmanEncoder(alphabet_size=128).encode_block(DataBlock(literals))
         
         return encoded_bitarray
         
@@ -203,11 +199,7 @@ class LZ78Decoder(DataDecoder):
             encoded_bitarray (BitArray): encoded bit array
         """
         # Huffman for ASCII input
-        # literals, num_bits_consumed = EmpiricalIntHuffmanDecoder(alphabet_size=128).decode_block(
-        #     encoded_bitarray
-        # )
-
-        literals, num_bits_consumed = LogScaleBinnedIntegerDecoder(offset=self.log_scale_binned_coder_offset).decode_block(
+        literals, num_bits_consumed = EmpiricalIntHuffmanDecoder(alphabet_size=128).decode_block(
             encoded_bitarray
         )
         # Convert from unicode interger back to symbol
@@ -316,12 +308,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.decompress:
-        decoder = LZ78Decoder(
-            log_scale_binned_coder_offset = 128,
-        )
+        decoder = LZ78Decoder()
         decoder.decode_file(args.input, args.output)
     else:
-        encoder = LZ78Encoder(
-            log_scale_binned_coder_offset = 128,
-        )
+        encoder = LZ78Encoder()
         encoder.encode_file(args.input, args.output, block_size=BLOCKSIZE)
+        # init_dic = encoder.dictionary
+        # encoder = LZ78Encoder(initial_dict=init_dic)
+        # encoder.encode_file(args.input, args.output, block_size=BLOCKSIZE)
